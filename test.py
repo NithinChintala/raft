@@ -3,6 +3,8 @@
 import getpass, os, argparse, atexit
 from run import Simulation
 
+REPLICA_PROG = './3700kvstore'
+
 # Constants for tuning the difficulty of the tests
 PACKETS_LOW = 500.0
 PACKETS_MID = 800.0
@@ -15,6 +17,7 @@ LATENCY_MID = 0.09
 LATENCY_HIGH = 0.5
 
 parser = argparse.ArgumentParser()
+parser.add_argument('replica_prog', nargs='?', default=REPLICA_PROG)
 parser.add_argument("--config-directory",
                     dest='config_dir',
                     default='',
@@ -38,7 +41,7 @@ def run_test(filename, description, log=None):
     global sim
         
     sim = Simulation(os.path.join(args.config_dir, filename), args.silence)
-    sim.run()
+    sim.run(args.replica_prog)
     sim.shutdown()
     stats = sim.stats    
 

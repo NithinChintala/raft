@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys, os, time, json, socket, select, random, subprocess, signal, string, hashlib, bisect, atexit
+import argparse
 
 VERSION = "0.8"
 
@@ -347,8 +348,8 @@ class Replica:
         self.listen_sock.bind(rid)
         self.listen_sock.listen(1)
 
-    def run(self, rids, silence):
-        args = [REPLICA_PROG, self.rid]
+    def run(self, replica_prog, rids, silence):
+        args = [replica_prog, self.rid]
         args.extend(rids - set([self.rid]))
 
         # Launch each process in it's own process group so that it can be killed without affecting
@@ -419,9 +420,9 @@ class Simulation:
 
         self.living_rids = self.rids.copy()
     
-    def run(self):
+    def run(self, replica_prog):
         for r in self.replicas.itervalues():
-            r.run(self.rids, self.silence)
+            r.run(replica_prog, self.rids, self.silence)
 
         # sleep for a second to allow all spawned sub-processes to connect/perform initialization
         #time.sleep(1)
@@ -732,11 +733,13 @@ class Simulation:
 #######################################################################################################
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print 'Usage: $ %s <config file>' % (sys.argv[0])
-        sys.exit()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('config_file')
+    parser.add_argument('replica_prog', nargs='?', default=REPLICA_PROG)
 
-    sim = Simulation(sys.argv[1], False)
+    args = parser.parse_args()
+
+    sim = Simulation(args.config_file, False)
 
     def kill_processes():
         try: sim.shutdown()
@@ -745,7 +748,7 @@ if __name__ == "__main__":
     # Attempt to kill child processes regardless of how Python shuts down (e.g. via an exception or ctrl-C)
     atexit.register(kill_processes)
         
-    sim.run()
+    sim.run(args.replica_prog)
     sim.shutdown()
 
     bold("\n# Simulation Finished\n\n## Useful Information and Statistics")
