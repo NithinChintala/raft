@@ -1,0 +1,132 @@
+#!/usr/bin/env python
+import argparse
+import socket
+import select
+import enum
+import sys
+import json
+import os
+
+
+class State(enum.Enum):
+    FOLLOWER = enum.auto()
+    CANDIDATE = enum.auto()
+    LEADER = enum.auto()
+
+
+# Message Types
+GET = "get"
+OK = "ok"
+FAIL = "fail"
+PUT = "put"
+REDIRECT = "redirect"
+REQ_VOTE = "requestVote"
+APPEND = "append"
+
+# JSON fields
+## Shared among all message types
+SRC = "src"
+DST = "dst"
+LDR = "leader"
+TYPE = "type"
+MID = "MID"
+TERM = "term"
+
+UNKNOWN_LEADER = "FFFF"
+
+DEBUG_LEVEL = int(os.getenv("DEBUG_LEVEL", 0))
+
+
+def log(string, min_level=1):
+    if DEBUG_LEVEL >= min_level:
+        print(string)
+
+
+###############################################################################
+
+
+class Replica:
+
+    def __init__(self, my_id, replica_ids):
+        self.id = my_id
+        self.replica_ids = replica_ids
+        self.state = State.FOLLOWER
+        self.leader = UNKNOWN_LEADER
+
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        self.sock.connect(self.id)
+
+    def start(self):
+        try:
+            while True:
+                if self.state is State.FOLLOWER:
+                    self.follower()
+                elif self.state is State.CANDIDATE:
+                    self.candidate()
+                elif self.state is State.LEADER:
+                    self.leader()
+        finally:
+            self.sock.close()
+
+    def follower(self):
+        while True:
+            msg = self.recv()
+            if msg is None:
+                continue
+
+            resp = {
+                SRC: msg[DST],
+                DST: msg[SRC],
+                MID: msg[MID],
+                LDR: self.leader
+            }
+            if msg[TYPE] in [GET, PUT]:
+                resp[TYPE] = FAIL
+                self.send(resp)
+
+    def candidate(self):
+        pass
+
+    def leader(self):
+        pass
+
+    def recv(self):
+        ready = select.select([self.sock], [], [])[0]
+        if self.sock in ready:
+            msg_raw = self.sock.recv(32768)
+            if len(msg_raw) == 0:
+                msg = None
+            else:
+                msg = json.loads(msg_raw)
+
+        if msg:
+            log(f"[RECV] {msg[DST]} <- {msg[SRC]} : {msg}", min_level=3)
+
+        return msg
+
+    def send(self, msg):
+        log(f"[SEND] {msg[SRC]} -> {msg[DST]} : {msg}", min_level=3)
+        self.sock.send(json.dumps(msg).encode())
+
+
+###############################################################################
+
+
+def get_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("id")
+    parser.add_argument("replica_ids", nargs='+')
+
+    return parser
+
+
+def main(args=None):
+    parser = get_parser()
+    args = parser.parse_args(args)
+
+    replica = Replica(args.id, args.replica_ids)
+    replica.start()
+
+
+if __name__ == "__main__":
+    main()
